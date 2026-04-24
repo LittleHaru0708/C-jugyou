@@ -1,5 +1,4 @@
 ﻿// CPP3-01.cpp : アプリケーションのエントリ ポイントを定義します。
-//
 
 #include "framework.h"
 #include "CPP3.h"
@@ -13,11 +12,12 @@
 
 #define MAX_LOADSTRING 100
 
-
-// グローバル変数:
-HINSTANCE hInst;                                // 現在のインターフェイス
-WCHAR szTitle[MAX_LOADSTRING];                  // タイトル バーのテキスト
-WCHAR szWindowClass[MAX_LOADSTRING];            // メイン ウィンドウ クラス名
+// =========================
+// グローバル変数
+// =========================
+HINSTANCE hInst;
+WCHAR szTitle[MAX_LOADSTRING];
+WCHAR szWindowClass[MAX_LOADSTRING];
 
 using namespace UniDx;
 using namespace DirectX;
@@ -25,264 +25,215 @@ using namespace DirectX;
 // シェーダー
 Shader spriteShader;
 
-// フォント描画用
+// フォント
 std::unique_ptr<SpriteBatch> g_spriteBatch;
 std::unique_ptr<SpriteFont>  g_spriteFont;
 
-// このコード モジュールに含まれる関数の宣言を転送します:
+// =========================
+// 頂点データ（グローバル）
+// =========================
+struct VertexType
+{
+    DirectX::XMFLOAT3 Pos;
+};
+
+VertexType v[3] =
+{
+    {{-0.5f,-0.5f,0}},
+    {{-0.5f, 0.5f,0}},
+    {{ 0.5f,-0.5f,0}}
+};
+
+// 頂点バッファ（1回生成）
+ComPtr<ID3D11Buffer> g_vertexBuffer;
+
+// 関数宣言
 ATOM                MyRegisterClass(HINSTANCE hInstance);
 BOOL                InitInstance(HINSTANCE, int);
 LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
 
+// =========================
+// メイン
+// =========================
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
-                     _In_opt_ HINSTANCE hPrevInstance,
-                     _In_ LPWSTR    lpCmdLine,
-                     _In_ int       nCmdShow)
+    _In_opt_ HINSTANCE hPrevInstance,
+    _In_ LPWSTR    lpCmdLine,
+    _In_ int       nCmdShow)
 {
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(lpCmdLine);
 
-    // TODO: ここにコードを挿入してください。
-
-    // グローバル文字列を初期化する
     LoadStringW(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
     LoadStringW(hInstance, IDC_CPP301, szWindowClass, MAX_LOADSTRING);
     MyRegisterClass(hInstance);
 
-    // アプリケーション初期化の実行:
-    if (!InitInstance (hInstance, nCmdShow))
-    {
+    if (!InitInstance(hInstance, nCmdShow))
         return FALSE;
-    }
 
-    HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_CPP301));
+    MSG msg = {};
 
-    MSG msg;
-    // メイン メッセージ ループ:
-    while(true)
+    while (true)
     {
-        if(PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
+        if (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
         {
-            // Windowsのメッセージ処理
-            // 終了メッセージがきた
-            if(msg.message == WM_QUIT) {
+            if (msg.message == WM_QUIT)
                 break;
-            }
-            else
-            {
-                TranslateMessage(&msg);
-                DispatchMessage(&msg);
-            }
+
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
         }
-        // 画面を塗りつぶす
+
+        // =========================
+        // 入力更新
+        // =========================
+        Input::update();
+
+        float speed = 0.01f;
+
+        if (Input::GetKey(Keyboard::A))
+            for (int i = 0; i < 3; i++) v[i].Pos.x -= speed;
+
+        if (Input::GetKey(Keyboard::D))
+            for (int i = 0; i < 3; i++) v[i].Pos.x += speed;
+
+        if (Input::GetKey(Keyboard::W))
+            for (int i = 0; i < 3; i++) v[i].Pos.y += speed;
+
+        if (Input::GetKey(Keyboard::S))
+            for (int i = 0; i < 3; i++) v[i].Pos.y -= speed;
+
+        // =========================
+        // 画面クリア
+        // =========================
         D3DManager::getInstance()->Clear(0.3f, 0.5f, 0.9f, 1.0f);
 
-        // 描画処理
-        // 三角形の描画
+        // =========================
+        // 描画
+        // =========================
         {
-            // １頂点の形式(今回は座標だけ)
-            struct VertexType
-            {
-                DirectX::XMFLOAT3 Pos;	// 座標
-            };
-            // 三角形を作るため、頂点を３つ作る
-            VertexType v[3] = {
-                {{-0.5,-0.5,0}},
-                {{-0.5,0.5,0}},
-                {{0.5,-0.5,0}}
-            };
-            //-----------------------------
-            // 頂点バッファ作成
-            // ・ビデオメモリ側に「頂点バッファ」という形で作る必要がある
-            // ・今回は描画のたびに作る
-            //-----------------------------
-            // 作成するバッファの仕様を決める
-            D3D11_BUFFER_DESC vbDesc = {};
-            vbDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;	// デバイスにバインドするときの種類(頂点バッファ、インデックスバッファ、定数バッファなど)
-            vbDesc.ByteWidth = sizeof(v);					// 作成するバッファのバイトサイズ
-            vbDesc.MiscFlags = 0;							// その他のフラグ
-            vbDesc.StructureByteStride = 0;					// 構造化バッファの場合、その構造体のサイズ
-            vbDesc.Usage = D3D11_USAGE_DEFAULT;				// 作成するバッファの使用法
-            vbDesc.CPUAccessFlags = 0;
-
-            // 上の仕様を渡して頂点バッファを作ってもらう
-            ComPtr<ID3D11Buffer> vb;
-            D3D11_SUBRESOURCE_DATA initData = { &v[0], sizeof(v), 0 };	// 書き込むデータ
-
-            // 頂点バッファの作成
-            D3DManager::getInstance()->GetDevice()->CreateBuffer(&vbDesc, &initData, &vb);
-
-            // 頂点バッファを描画で使えるようにセットする
             UINT stride = sizeof(VertexType);
             UINT offset = 0;
-            D3DManager::getInstance()->GetContext()->IASetVertexBuffers(0, 1, vb.GetAddressOf(), &stride, &offset);
 
-            // プロミティブ・トポロジーをセット
-            D3DManager::getInstance()->GetContext()->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+            D3DManager::getInstance()->GetContext()->IASetVertexBuffers(
+                0, 1, g_vertexBuffer.GetAddressOf(), &stride, &offset);
 
-            //-----------------------------
-            // シェーダーをセット
-            //-----------------------------
+            D3DManager::getInstance()->GetContext()->IASetPrimitiveTopology(
+                D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+
             spriteShader.SetToContext();
 
-            //-----------------------------
-            // 描画実行
-            //-----------------------------
-            // デバイスコンテキスト、上記のセットした内容で描画する
             D3DManager::getInstance()->GetContext()->Draw(3, 0);
         }
 
-        // バックバッファの内容を画面に表示
         D3DManager::getInstance()->Present();
     }
 
-
-    return (int) msg.wParam;
+    return (int)msg.wParam;
 }
 
-
-
-//
-//  関数: MyRegisterClass()
-//
-//  目的: ウィンドウ クラスを登録します。
-//
+// =========================
+// ウィンドウ登録
+// =========================
 ATOM MyRegisterClass(HINSTANCE hInstance)
 {
-    WNDCLASSEXW wcex;
+    WNDCLASSEXW wcex = {};
 
     wcex.cbSize = sizeof(WNDCLASSEX);
-
-    wcex.style          = CS_HREDRAW | CS_VREDRAW;
-    wcex.lpfnWndProc    = WndProc;
-    wcex.cbClsExtra     = 0;
-    wcex.cbWndExtra     = 0;
-    wcex.hInstance      = hInstance;
-    wcex.hIcon          = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_CPP301));
-    wcex.hCursor        = LoadCursor(nullptr, IDC_ARROW);
-    wcex.hbrBackground  = (HBRUSH)(COLOR_WINDOW+1);
-    wcex.lpszMenuName   = MAKEINTRESOURCEW(IDC_CPP301);
-    wcex.lpszClassName  = szWindowClass;
-    wcex.hIconSm        = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
+    wcex.style = CS_HREDRAW | CS_VREDRAW;
+    wcex.lpfnWndProc = WndProc;
+    wcex.hInstance = hInstance;
+    wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_CPP301));
+    wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    wcex.lpszClassName = szWindowClass;
 
     return RegisterClassExW(&wcex);
 }
 
-//
-//   関数: InitInstance(HINSTANCE, int)
-//
-//   目的: インスタンス ハンドルを保存して、メイン ウィンドウを作成します
-//
-//   コメント:
-//
-//        この関数で、グローバル変数でインスタンス ハンドルを保存し、
-//        メイン プログラム ウィンドウを作成および表示します。
-//
+// =========================
+// 初期化
+// =========================
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
-   hInst = hInstance; // グローバル変数にインスタンス ハンドルを格納する
+    hInst = hInstance;
 
-   HWND hWnd = CreateWindowW(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
-      CW_USEDEFAULT, 0, CW_USEDEFAULT, 0, nullptr, nullptr, hInstance, nullptr);
+    HWND hWnd = CreateWindowW(
+        szWindowClass,
+        szTitle,
+        WS_OVERLAPPEDWINDOW,
+        CW_USEDEFAULT, 0,
+        1280, 720,
+        nullptr, nullptr,
+        hInstance,
+        nullptr);
 
-   if (!hWnd)
-   {
-      return FALSE;
-   }
+    if (!hWnd)
+        return FALSE;
 
-   // Direct3Dインスタンス作成g_constantBuffer
-   D3DManager::create();
+    // DirectX初期化
+    D3DManager::create();
+    D3DManager::getInstance()->Initialize(hWnd, 1280, 720);
 
-   // Direct3D初期化
-   D3DManager::getInstance()->Initialize(hWnd, 1280, 720);
+    // シェーダー
+    spriteShader.Compile(L"SpriteShader.hlsl");
 
-   // シェーダーコンパイル
-   spriteShader.Compile(L"SpriteShader.hlsl");
+    // フォント
+    g_spriteBatch = std::make_unique<SpriteBatch>(
+        D3DManager::getInstance()->GetContext().Get());
 
-   // フォント初期化
-   g_spriteBatch = std::make_unique<SpriteBatch>(D3DManager::getInstance()->GetContext().Get());
-   g_spriteFont = std::make_unique<SpriteFont>(D3DManager::getInstance()->GetDevice().Get(), L"M PLUS 1.spritefont");
+    g_spriteFont = std::make_unique<SpriteFont>(
+        D3DManager::getInstance()->GetDevice().Get(),
+        L"M PLUS 1.spritefont");
 
-   ShowWindow(hWnd, nCmdShow);
-   UpdateWindow(hWnd);
+    // =========================
+    // 頂点バッファ作成（1回だけ）
+    // =========================
+    D3D11_BUFFER_DESC vbDesc = {};
+    vbDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    vbDesc.ByteWidth = sizeof(v);
+    vbDesc.Usage = D3D11_USAGE_DEFAULT;
 
-   Input::initialize();
+    D3D11_SUBRESOURCE_DATA initData = {};
+    initData.pSysMem = v;
 
-   return TRUE;
+    D3DManager::getInstance()->GetDevice()->CreateBuffer(
+        &vbDesc,
+        &initData,
+        &g_vertexBuffer
+    );
+
+    ShowWindow(hWnd, nCmdShow);
+    UpdateWindow(hWnd);
+
+    Input::initialize();
+
+    return TRUE;
 }
 
-//
-//  関数: WndProc(HWND, UINT, WPARAM, LPARAM)
-//
-//  目的: メイン ウィンドウのメッセージを処理します。
-//
-//  WM_COMMAND  - アプリケーション メニューの処理
-//  WM_PAINT    - メイン ウィンドウを描画する
-//  WM_DESTROY  - 中止メッセージを表示して戻る
-//
-//
+// =========================
+// ウィンドウ処理
+// =========================
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     switch (message)
     {
-    case WM_COMMAND:
-        {
-            int wmId = LOWORD(wParam);
-            // 選択されたメニューの解析:
-            switch (wmId)
-            {
-            case IDM_ABOUT:
-                DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
-                break;
-            case IDM_EXIT:
-                DestroyWindow(hWnd);
-                break;
-            default:
-                return DefWindowProc(hWnd, message, wParam, lParam);
-            }
-        }
-        break;
-    case WM_PAINT:
-        {
-            PAINTSTRUCT ps;
-            HDC hdc = BeginPaint(hWnd, &ps);
-            // TODO: HDC を使用する描画コードをここに追加してください...
-            EndPaint(hWnd, &ps);
-        }
-        break;
-    case WM_ACTIVATE:
-    case WM_ACTIVATEAPP:
-    case WM_KEYDOWN:
-    case WM_KEYUP:
-    case WM_SYSKEYUP:
-        DirectX::Keyboard::ProcessMessage(message, wParam, lParam);
-        break;
     case WM_DESTROY:
         PostQuitMessage(0);
         break;
+
+    case WM_KEYDOWN:
+    case WM_KEYUP:
+        DirectX::Keyboard::ProcessMessage(message, wParam, lParam);
+        break;
+
     default:
         return DefWindowProc(hWnd, message, wParam, lParam);
     }
     return 0;
 }
 
-// バージョン情報ボックスのメッセージ ハンドラーです。
-INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+// About（未使用）
+INT_PTR CALLBACK About(HWND, UINT, WPARAM, LPARAM)
 {
-    UNREFERENCED_PARAMETER(lParam);
-    switch (message)
-    {
-    case WM_INITDIALOG:
-        return (INT_PTR)TRUE;
-
-    case WM_COMMAND:
-        if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL)
-        {
-            EndDialog(hDlg, LOWORD(wParam));
-            return (INT_PTR)TRUE;
-        }
-        break;
-    }
     return (INT_PTR)FALSE;
 }
